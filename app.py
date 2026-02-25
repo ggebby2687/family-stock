@@ -5,7 +5,7 @@ import os
 import plotly.express as px
 import plotly.graph_objects as go
 import google.generativeai as genai
-from datetime import datetime
+from datetime import datetime, timedelta
 
 st.set_page_config(page_title="가족 자산 대시보드", page_icon="💰", layout="wide")
 st.title("💰 우리 가족 주식 통합 대시보드")
@@ -25,9 +25,6 @@ st.sidebar.link_button("4. 📰 글로벌 주식 뉴스", "https://finance.naver
 st.sidebar.link_button("5. 📈 구글 파이낸스", "https://www.google.com/finance/?hl=ko", use_container_width=True)
 st.sidebar.markdown("---")
 
-# ==============================================================================
-# 🌟 API 키 자동 로그인 (Streamlit Secrets 활용)
-# ==============================================================================
 st.sidebar.header("🤖 AI 멘토 상태")
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
@@ -72,14 +69,9 @@ df_stock = pd.read_csv(PORTFOLIO_FILE, dtype={"종목코드(6자리)": str, "거
 df_dep = pd.read_csv(DEPOSIT_FILE, dtype={"입금일자": str, "메모": str}, encoding='utf-8-sig')
 df_rec = pd.read_csv(RECURRING_FILE, dtype={"종목코드(6자리)": str, "시작일자": str, "최근적용일자": str}, encoding='utf-8-sig')
 
-# ==============================================================================
-# 🌟 [업그레이드] 표에 '종목명' 자동 표시 기능 추가
-# ==============================================================================
 if not df_stock.empty:
     df_stock = df_stock.sort_values(by="거래일자", ascending=False, na_position='last').reset_index(drop=True)
-    # 종목코드를 읽어서 종목명으로 변환하는 마법
     df_stock['종목명'] = df_stock['종목코드(6자리)'].apply(lambda x: stock_dict.get(str(x).split('.')[0].zfill(6), "알 수 없는 종목"))
-    # 표에서 보기 편하게 순서 재배치
     df_stock = df_stock.reindex(columns=["소유자", "계좌명", "거래종류", "종목코드(6자리)", "종목명", "거래일자", "거래단가", "수량", "메모"])
 else:
     df_stock = pd.DataFrame(columns=["소유자", "계좌명", "거래종류", "종목코드(6자리)", "종목명", "거래일자", "거래단가", "수량", "메모"])
@@ -109,7 +101,6 @@ with tab1:
             if submitted:
                 if new_owner and new_acc and new_code and new_qty > 0:
                     new_row = pd.DataFrame([{"소유자": new_owner, "계좌명": new_acc, "거래종류": new_type, "종목코드(6자리)": new_code, "거래일자": new_date.strftime("%Y-%m-%d"), "거래단가": new_price, "수량": new_qty, "메모": new_memo}])
-                    # 저장할 때는 '종목명'을 빼고 원본 그대로 깔끔하게 저장합니다.
                     df_to_save = df_stock.drop(columns=['종목명'], errors='ignore')
                     df_stock_updated = pd.concat([new_row, df_to_save], ignore_index=True)
                     df_stock_updated.to_csv(PORTFOLIO_FILE, index=False, encoding='utf-8-sig')
@@ -119,18 +110,7 @@ with tab1:
                     st.error("⚠️ 소유자, 계좌명, 종목코드, 수량을 정확히 입력해주세요.")
     
     st.markdown("#### 📋 기존 매매 기록 수정 및 확인")
-    # 종목명 컬럼은 사용자가 수정하지 못하도록 비활성화(disabled) 해둡니다.
-    edited_stock = st.data_editor(
-        df_stock, 
-        num_rows="dynamic", 
-        use_container_width=True, 
-        height=200, 
-        key="stock", 
-        column_config={
-            "거래종류": st.column_config.SelectboxColumn("매수/매도", options=["매수", "매도"], required=True),
-            "종목명": st.column_config.TextColumn("종목명 (자동표시)", disabled=True)
-        }
-    )
+    edited_stock = st.data_editor(df_stock, num_rows="dynamic", use_container_width=True, height=200, key="stock", column_config={"거래종류": st.column_config.SelectboxColumn("매수/매도", options=["매수", "매도"], required=True), "종목명": st.column_config.TextColumn("종목명 (자동표시)", disabled=True)})
 
 with tab2:
     with st.expander("➕ 새로운 입금 기록 추가하기", expanded=True):
@@ -181,7 +161,6 @@ with tab3:
                 except:
                     pass
         if new_orders:
-            # 봇이 저장할 때도 종목명을 빼고 안전하게 저장합니다.
             df_to_save = df_stock.drop(columns=['종목명'], errors='ignore')
             df_stock_updated = pd.concat([df_to_save, pd.DataFrame(new_orders)], ignore_index=True)
             df_stock_updated.to_csv(PORTFOLIO_FILE, index=False, encoding='utf-8-sig')
@@ -192,7 +171,6 @@ with tab3:
             st.info("✅ 이미 오늘까지의 적립식 매수가 모두 완료되어 최신 상태입니다.")
 
 if st.button("💾 표에서 직접 수정한 데이터 저장 및 새로고침", use_container_width=True):
-    # 수정 내역을 저장할 때도 종목명은 빼고 저장합니다.
     edited_stock.drop(columns=['종목명'], errors='ignore').to_csv(PORTFOLIO_FILE, index=False, encoding='utf-8-sig')
     edited_dep.to_csv(DEPOSIT_FILE, index=False, encoding='utf-8-sig')
     st.success("✅ 표 수정 내역 저장 완료!")
@@ -201,6 +179,7 @@ if st.button("💾 표에서 직접 수정한 데이터 저장 및 새로고침"
 st.write("---")
 st.subheader("📊 2. 사람별/계좌별 전체 자산 요약")
 
+# 데이터 요약 계산 로직
 if not edited_stock.empty or not edited_dep.empty:
     with st.spinner("자산 계산 및 과거 시계열 주가를 분석하는 중입니다..."):
         edited_dep["입금액"] = pd.to_numeric(edited_dep["입금액"], errors='coerce').fillna(0)
@@ -389,7 +368,6 @@ if not edited_stock.empty or not edited_dep.empty:
             y_range = [min_y * 0.98, max_y * 1.02] 
 
             fig_line = go.Figure()
-            
             fig_line.add_trace(go.Scatter(x=x_index, y=plot_eval, mode='lines+markers', name='평가금액', fill='tozeroy', line=dict(color='#00cc96', width=3), marker=dict(size=6), fillcolor='rgba(0, 204, 150, 0.2)'))
             fig_line.add_trace(go.Scatter(x=x_index, y=plot_invest, mode='lines+markers', name='누적투자', line=dict(color='#ef553b', width=3), marker=dict(size=6)))
             fig_line.add_trace(go.Scatter(x=x_index, y=plot_profit, mode='lines+markers', name='누적손익', line=dict(color='#1f77b4', width=2), marker=dict(size=6)))
@@ -466,8 +444,84 @@ if not edited_stock.empty or not edited_dep.empty:
                 else:
                     st.info("해당 기간에는 거래 내역이 없습니다.")
 
+        # ==============================================================================
+        # 🌟 [업그레이드 완벽 구현] 관심 종목 바겐세일(MDD) 스캐너
+        # ==============================================================================
         st.write("---")
-        st.subheader("💬 4. AI 멘토와 실시간 대화하기 (포메뽀꼬 모드)")
+        st.subheader("🎯 4. 관심 종목 바겐세일(낙폭) 스캐너")
+        st.info("💡 선생님의 평단가와 무관하게, 시장 고점 대비 5% 이상 하락한 '바겐세일' 구간을 찾아냅니다. (최근 1개월 기준)")
+        
+        # 포메뽀꼬 스타일 기본 관심 종목
+        default_target_codes = ["367380", "360200", "460330"] # 나스닥, S&P500, 배당성장(예시)
+        all_krx_names = list(stock_dict.values())
+        
+        # 이름으로 변환하여 멀티셀렉트 제공
+        default_target_names = [stock_dict.get(c, c) for c in default_target_codes if c in stock_dict]
+        selected_watch_names = st.multiselect("🔍 감시할 관심 종목을 추가/삭제하세요", all_krx_names, default=default_target_names)
+        
+        if selected_watch_names:
+            watch_results = []
+            # 거꾸로 이름에서 코드를 찾기 위한 딕셔너리 뒤집기
+            name_to_code = {v: k for k, v in stock_dict.items()}
+            
+            with st.spinner("AI가 최근 1개월 시장 최고점을 추적하여 현재 하락폭(MDD)을 계산 중입니다..."):
+                for name in selected_watch_names:
+                    code = name_to_code.get(name)
+                    if code:
+                        end_d = datetime.today()
+                        start_d = end_d - timedelta(days=30)
+                        try:
+                            # 최근 30일치 주가 데이터를 가져와서 최고점과 현재가 비교
+                            df_hist = fdr.DataReader(code, start_d.strftime('%Y-%m-%d'), end_d.strftime('%Y-%m-%d'))
+                            if not df_hist.empty:
+                                high_price = int(df_hist['High'].max())
+                                curr_price = int(df_hist['Close'].iloc[-1])
+                                drop_rate = ((curr_price - high_price) / high_price) * 100
+                                
+                                # 하락률에 따른 시그널 판별 (포메뽀꼬 전략)
+                                signal = "관망 😐"
+                                color_style = ""
+                                if drop_rate <= -10:
+                                    signal = "🚨 강력 매수 (3배 레버리지 투입!)"
+                                    color_style = "color: #ff4b4b; font-weight: bold;"
+                                elif drop_rate <= -5:
+                                    signal = "🟡 분할 매수 (2배 레버리지 투입)"
+                                    color_style = "color: #ff9900; font-weight: bold;"
+                                elif drop_rate >= 0:
+                                    signal = "고점 돌파 🚀"
+                                    color_style = "color: #1f77b4;"
+                                    
+                                watch_results.append({
+                                    "종목명": name,
+                                    "최근 1달 고점": f"{high_price:,}원",
+                                    "현재가": f"{curr_price:,}원",
+                                    "고점 대비 하락률": drop_rate,
+                                    "포메뽀꼬 시그널": signal
+                                })
+                        except:
+                            pass
+                            
+            if watch_results:
+                df_watch = pd.DataFrame(watch_results)
+                
+                # 하락률 소수점 둘째자리까지 표기 및 색상 적용
+                def style_mdd(val):
+                    if isinstance(val, float):
+                        if val <= -10:
+                            return "color: #ff4b4b; font-weight: bold;"
+                        elif val <= -5:
+                            return "color: #ff9900; font-weight: bold;"
+                        elif val >= 0:
+                            return "color: #1f77b4;"
+                    return ""
+                
+                df_watch_styled = df_watch.style.format({"고점 대비 하락률": "{:.2f}%"}).applymap(style_mdd, subset=['고점 대비 하락률'])
+                st.dataframe(df_watch_styled, use_container_width=True, hide_index=True)
+            else:
+                st.warning("종목 데이터를 불러올 수 없습니다.")
+
+        st.write("---")
+        st.subheader("💬 5. AI 멘토와 실시간 대화하기 (포메뽀꼬 모드)")
         st.info("💡 위에서 즐겨찾기 한 글로벌 시황 사이트들을 볼 시간이 없다면, 아래의 [시황 브리핑] 버튼을 눌러 AI에게 대신 요약을 부탁해보세요!")
 
         if not api_key:
