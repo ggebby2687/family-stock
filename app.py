@@ -26,16 +26,14 @@ st.sidebar.link_button("5. 📈 구글 파이낸스", "https://www.google.com/fi
 st.sidebar.markdown("---")
 
 # ==============================================================================
-# 🌟 [업그레이드] API 키 자동 로그인 (Streamlit Secrets 활용)
+# 🌟 API 키 자동 로그인 (Streamlit Secrets 활용)
 # ==============================================================================
 st.sidebar.header("🤖 AI 멘토 상태")
 try:
-    # 스트림릿 웹사이트의 비밀 금고(Secrets)에서 키를 몰래 꺼내옵니다.
     api_key = st.secrets["GEMINI_API_KEY"]
     st.sidebar.success("✅ AI 멘토 시스템 연결 완벽!")
     st.sidebar.caption("비밀 금고에서 인증키를 자동으로 불러왔습니다.")
 except:
-    # 컴퓨터에서 임시로 테스트할 때 에러가 나지 않도록 방어하는 코드
     api_key = ""
     st.sidebar.error("⚠️ 비밀 금고에 키가 없습니다.")
     api_key = st.sidebar.text_input("Gemini API Key (로컬용)", type="password")
@@ -139,7 +137,8 @@ with tab2:
 
 with tab3:
     edited_rec = st.data_editor(df_rec, num_rows="dynamic", use_container_width=True, height=150, key="recurring", column_config={"매수주기": st.column_config.SelectboxColumn("매수주기", options=["매일(영업일)"], required=True)})
-    if st.button("🚀 적립식 자동 매수 실행! (빈 날짜 영수증 싹 채 큰우기)", use_container_width=True):
+    # 🌟 [오타 수정 완료!] 
+    if st.button("🚀 적립식 자동 매수 실행! (빈 날짜 영수증 싹 채우기)", use_container_width=True):
         edited_rec.to_csv(RECURRING_FILE, index=False, encoding='utf-8-sig')
         new_orders = []
         today_str = datetime.today().strftime('%Y-%m-%d')
@@ -447,7 +446,7 @@ if not edited_stock.empty or not edited_dep.empty:
         st.info("💡 위에서 즐겨찾기 한 글로벌 시황 사이트들을 볼 시간이 없다면, 아래의 [시황 브리핑] 버튼을 눌러 AI에게 대신 요약을 부탁해보세요!")
 
         if not api_key:
-            st.warning("⚠️ 비밀 금고에서 인증키를 찾을 수 없습니다. 설정을 확인해 주세요.")
+            st.warning("⚠️ 왼쪽 사이드바에 Gemini API Key를 먼저 입력해야 대화가 가능합니다.")
         else:
             col_chat1, col_chat2 = st.columns([3, 1])
             
