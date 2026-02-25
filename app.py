@@ -17,9 +17,6 @@ if "messages" not in st.session_state:
 if "chat_session" not in st.session_state:
     st.session_state.chat_session = None
 
-# ==============================================================================
-# 🌟 [업그레이드 1] 사이드바에 '투자 참고 사이트' 바로가기 버튼 추가
-# ==============================================================================
 st.sidebar.markdown("### 🌐 필수 투자 참고 사이트")
 st.sidebar.link_button("1. 🏦 금리변동예상 (FedWatch)", "https://www.cmegroup.com/markets/interest-rates/cme-fedwatch-tool.html", use_container_width=True)
 st.sidebar.link_button("2. 😱 공포탐욕지수 (CNN)", "https://edition.cnn.com/markets/fear-and-greed", use_container_width=True)
@@ -446,7 +443,7 @@ if not edited_stock.empty or not edited_dep.empty:
                     st.info("해당 기간에는 거래 내역이 없습니다.")
 
         # ==============================================================================
-        # 🌟 [업그레이드 2] AI 시황 브리핑 버튼 탑재 & 챗봇
+        # 🌟 [버그 수정 완료] 중복 없는 깔끔한 AI 챗봇 로직
         # ==============================================================================
         st.write("---")
         st.subheader("💬 4. AI 멘토와 실시간 대화하기 (포메뽀꼬 모드)")
@@ -457,37 +454,37 @@ if not edited_stock.empty or not edited_dep.empty:
         else:
             col_chat1, col_chat2 = st.columns([3, 1])
             
-            # 🔥 마법의 AI 시황 브리핑 버튼!
+            # 메시지 전송용 변수
+            msg_to_send = None
+            
+            # 브리핑 버튼 클릭 시
             if col_chat1.button("🌍 AI 멘토에게 '오늘 글로벌 시장 흐름 종합 브리핑' 받기", use_container_width=True):
-                auto_prompt = "최근의 미국 기준금리 변동 예상(FedWatch), 시장의 공포/탐욕 지수 상태, S&P 500 전반적인 흐름, 주요 경제 뉴스를 기반으로 현재 거시 경제 시황을 분석하고, 포메뽀꼬의 장기 투자 관점에서 내가 가져야 할 멘탈을 3줄로 요약해줘."
-                st.session_state.messages.append({"role": "user", "content": auto_prompt})
-                # 임시 변수를 주어 채팅 입력창으로 메시지를 넘깁니다.
-                st.session_state.trigger_briefing = auto_prompt
+                msg_to_send = "최근의 미국 기준금리 변동 예상(FedWatch), 시장의 공포/탐욕 지수 상태, S&P 500 전반적인 흐름, 주요 경제 뉴스를 기반으로 현재 거시 경제 시황을 분석하고, 포메뽀꼬의 장기 투자 관점에서 내가 가져야 할 멘탈을 3줄로 요약해줘."
 
+            # 지우기 버튼 클릭 시
             if col_chat2.button("🔄 대화 내용 지우기", use_container_width=True):
                 st.session_state.messages = []
                 st.session_state.chat_session = None
                 st.rerun()
 
+            # 1. 화면에 이전 대화 내용 그리기
             for msg in st.session_state.messages:
                 with st.chat_message(msg["role"]):
                     st.markdown(msg["content"])
 
-            # 사용자가 직접 입력하거나 버튼으로 트리거 된 프롬프트 처리
-            prompt_input = st.chat_input("예: 나 당분간 돈 없어서 SCHD는 못 사는데, 상계 처리할 종목 딱 하나만 짚어줘.")
-            
-            if st.session_state.get("trigger_briefing"):
-                prompt_input = st.session_state.trigger_briefing
-                st.session_state.trigger_briefing = None # 한 번 실행 후 초기화
+            # 2. 채팅창에서 직접 입력받은 경우
+            user_input = st.chat_input("예: 나 당분간 돈 없어서 SCHD는 못 사는데, 상계 처리할 종목 딱 하나만 짚어줘.")
+            if user_input:
+                msg_to_send = user_input
+
+            # 3. 보낼 메시지가 있다면(버튼 누름 OR 채팅침) 실행!
+            if msg_to_send:
+                # 사용자의 질문을 저장하고 화면에 띄움
+                st.session_state.messages.append({"role": "user", "content": msg_to_send})
                 with st.chat_message("user"):
-                    st.markdown(prompt_input)
+                    st.markdown(msg_to_send)
 
-            if prompt_input:
-                if not st.session_state.get("trigger_briefing"): # 사용자가 직접 쳤을 때만 화면에 추가
-                    st.session_state.messages.append({"role": "user", "content": prompt_input})
-                    with st.chat_message("user"):
-                        st.markdown(prompt_input)
-
+                # AI가 답변할 차례
                 with st.chat_message("assistant"):
                     with st.spinner("AI 멘토가 데이터를 분석하며 답변을 작성 중입니다..."):
                         try:
@@ -514,9 +511,10 @@ if not edited_stock.empty or not edited_dep.empty:
                             if st.session_state.chat_session is None:
                                 st.session_state.chat_session = model.start_chat(history=[])
                                 
-                            response = st.session_state.chat_session.send_message(prompt_input)
+                            response = st.session_state.chat_session.send_message(msg_to_send)
                             st.markdown(response.text)
                             
+                            # AI의 답변도 저장
                             st.session_state.messages.append({"role": "assistant", "content": response.text})
                             
                         except Exception as e:
