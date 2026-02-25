@@ -72,8 +72,18 @@ df_stock = pd.read_csv(PORTFOLIO_FILE, dtype={"종목코드(6자리)": str, "거
 df_dep = pd.read_csv(DEPOSIT_FILE, dtype={"입금일자": str, "메모": str}, encoding='utf-8-sig')
 df_rec = pd.read_csv(RECURRING_FILE, dtype={"종목코드(6자리)": str, "시작일자": str, "최근적용일자": str}, encoding='utf-8-sig')
 
+# ==============================================================================
+# 🌟 [업그레이드] 표에 '종목명' 자동 표시 기능 추가
+# ==============================================================================
 if not df_stock.empty:
     df_stock = df_stock.sort_values(by="거래일자", ascending=False, na_position='last').reset_index(drop=True)
+    # 종목코드를 읽어서 종목명으로 변환하는 마법
+    df_stock['종목명'] = df_stock['종목코드(6자리)'].apply(lambda x: stock_dict.get(str(x).split('.')[0].zfill(6), "알 수 없는 종목"))
+    # 표에서 보기 편하게 순서 재배치
+    df_stock = df_stock.reindex(columns=["소유자", "계좌명", "거래종류", "종목코드(6자리)", "종목명", "거래일자", "거래단가", "수량", "메모"])
+else:
+    df_stock = pd.DataFrame(columns=["소유자", "계좌명", "거래종류", "종목코드(6자리)", "종목명", "거래일자", "거래단가", "수량", "메모"])
+
 if not df_dep.empty:
     df_dep = df_dep.sort_values(by="입금일자", ascending=False, na_position='last').reset_index(drop=True)
 
@@ -99,7 +109,9 @@ with tab1:
             if submitted:
                 if new_owner and new_acc and new_code and new_qty > 0:
                     new_row = pd.DataFrame([{"소유자": new_owner, "계좌명": new_acc, "거래종류": new_type, "종목코드(6자리)": new_code, "거래일자": new_date.strftime("%Y-%m-%d"), "거래단가": new_price, "수량": new_qty, "메모": new_memo}])
-                    df_stock_updated = pd.concat([new_row, df_stock], ignore_index=True)
+                    # 저장할 때는 '종목명'을 빼고 원본 그대로 깔끔하게 저장합니다.
+                    df_to_save = df_stock.drop(columns=['종목명'], errors='ignore')
+                    df_stock_updated = pd.concat([new_row, df_to_save], ignore_index=True)
                     df_stock_updated.to_csv(PORTFOLIO_FILE, index=False, encoding='utf-8-sig')
                     st.success("✅ 매매 기록이 성공적으로 추가되었습니다!")
                     st.rerun()
@@ -107,7 +119,18 @@ with tab1:
                     st.error("⚠️ 소유자, 계좌명, 종목코드, 수량을 정확히 입력해주세요.")
     
     st.markdown("#### 📋 기존 매매 기록 수정 및 확인")
-    edited_stock = st.data_editor(df_stock, num_rows="dynamic", use_container_width=True, height=200, key="stock", column_config={"거래종류": st.column_config.SelectboxColumn("매수/매도", options=["매수", "매도"], required=True)})
+    # 종목명 컬럼은 사용자가 수정하지 못하도록 비활성화(disabled) 해둡니다.
+    edited_stock = st.data_editor(
+        df_stock, 
+        num_rows="dynamic", 
+        use_container_width=True, 
+        height=200, 
+        key="stock", 
+        column_config={
+            "거래종류": st.column_config.SelectboxColumn("매수/매도", options=["매수", "매도"], required=True),
+            "종목명": st.column_config.TextColumn("종목명 (자동표시)", disabled=True)
+        }
+    )
 
 with tab2:
     with st.expander("➕ 새로운 입금 기록 추가하기", expanded=True):
@@ -137,7 +160,6 @@ with tab2:
 
 with tab3:
     edited_rec = st.data_editor(df_rec, num_rows="dynamic", use_container_width=True, height=150, key="recurring", column_config={"매수주기": st.column_config.SelectboxColumn("매수주기", options=["매일(영업일)"], required=True)})
-    # 🌟 [오타 수정 완료!] 
     if st.button("🚀 적립식 자동 매수 실행! (빈 날짜 영수증 싹 채우기)", use_container_width=True):
         edited_rec.to_csv(RECURRING_FILE, index=False, encoding='utf-8-sig')
         new_orders = []
@@ -159,7 +181,9 @@ with tab3:
                 except:
                     pass
         if new_orders:
-            df_stock_updated = pd.concat([df_stock, pd.DataFrame(new_orders)], ignore_index=True)
+            # 봇이 저장할 때도 종목명을 빼고 안전하게 저장합니다.
+            df_to_save = df_stock.drop(columns=['종목명'], errors='ignore')
+            df_stock_updated = pd.concat([df_to_save, pd.DataFrame(new_orders)], ignore_index=True)
             df_stock_updated.to_csv(PORTFOLIO_FILE, index=False, encoding='utf-8-sig')
             edited_rec.to_csv(RECURRING_FILE, index=False, encoding='utf-8-sig')
             st.success(f"🎉 성공! 총 {len(new_orders)}일 치의 자동 매수 영수증이 발급되었습니다!")
@@ -168,7 +192,8 @@ with tab3:
             st.info("✅ 이미 오늘까지의 적립식 매수가 모두 완료되어 최신 상태입니다.")
 
 if st.button("💾 표에서 직접 수정한 데이터 저장 및 새로고침", use_container_width=True):
-    edited_stock.to_csv(PORTFOLIO_FILE, index=False, encoding='utf-8-sig')
+    # 수정 내역을 저장할 때도 종목명은 빼고 저장합니다.
+    edited_stock.drop(columns=['종목명'], errors='ignore').to_csv(PORTFOLIO_FILE, index=False, encoding='utf-8-sig')
     edited_dep.to_csv(DEPOSIT_FILE, index=False, encoding='utf-8-sig')
     st.success("✅ 표 수정 내역 저장 완료!")
     st.rerun()
@@ -446,7 +471,7 @@ if not edited_stock.empty or not edited_dep.empty:
         st.info("💡 위에서 즐겨찾기 한 글로벌 시황 사이트들을 볼 시간이 없다면, 아래의 [시황 브리핑] 버튼을 눌러 AI에게 대신 요약을 부탁해보세요!")
 
         if not api_key:
-            st.warning("⚠️ 왼쪽 사이드바에 Gemini API Key를 먼저 입력해야 대화가 가능합니다.")
+            st.warning("⚠️ 비밀 금고에서 인증키를 찾을 수 없습니다. 설정을 확인해 주세요.")
         else:
             col_chat1, col_chat2 = st.columns([3, 1])
             
