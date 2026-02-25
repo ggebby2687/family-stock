@@ -11,9 +11,7 @@ st.set_page_config(page_title="가족 자산 대시보드", page_icon="💰", la
 st.title("💰 우리 가족 주식 통합 대시보드")
 st.write("---")
 
-# ==============================================================================
-# 🌟 [최적화] 대화 기록 및 '조회 상태'를 기억하는 메모리 초기화
-# ==============================================================================
+# --- 대화 기록 저장을 위한 메모리 초기화 ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "chat_session" not in st.session_state:
@@ -187,10 +185,6 @@ if st.button("💾 표에서 직접 수정한 데이터 저장 및 새로고침"
     st.rerun()
 
 st.write("---")
-
-# ==============================================================================
-# 🌟 [업그레이드 1] 2번 항목 '레이지 로딩(Lazy Loading)' 폼 적용 완료
-# ==============================================================================
 st.subheader("📊 2. 사람별/계좌별 전체 자산 요약")
 all_owners = df_stock["소유자"].dropna().unique().tolist() if not df_stock.empty else []
 all_accs = df_stock["계좌명"].dropna().unique().tolist() if not df_stock.empty else []
@@ -198,7 +192,6 @@ all_accs = df_stock["계좌명"].dropna().unique().tolist() if not df_stock.empt
 with st.form("summary_form"):
     st.info("💡 분석을 원하는 사람과 계좌를 선택한 후 **[📊 조회하기]** 버튼을 눌러야 화면이 나타납니다.")
     col_top1, col_top2 = st.columns(2)
-    # 초기에는 아무것도 선택되지 않게 비워둡니다 (default=[])
     selected_owners = col_top1.multiselect("👤 사람 선택", all_owners, default=[])
     selected_accs = col_top2.multiselect("🏦 계좌 선택", all_accs, default=[])
     summary_submit = st.form_submit_button("📊 조회하기 (자산 요약 계산)", use_container_width=True)
@@ -208,21 +201,17 @@ if summary_submit:
         st.warning("⚠️ 사람과 계좌를 각각 1개 이상 선택해주세요.")
         st.session_state.show_summary = False
     else:
-        # 버튼을 누르면 선택된 값을 세션(기억장치)에 저장하고 분석 화면을 켭니다.
         st.session_state.summary_owners = selected_owners
         st.session_state.summary_accs = selected_accs
         st.session_state.show_summary = True
         
-        # 차트용 기본 종목 리스트도 미리 만들어둡니다.
         fs_raw = edited_stock[(edited_stock["소유자"].isin(selected_owners)) & (edited_stock["계좌명"].isin(selected_accs))]
         avail_codes = fs_raw['종목코드(6자리)'].unique().tolist()
         avail_names = [stock_dict.get(str(c).split('.')[0].zfill(6), f"알 수 없는 종목({c})") for c in avail_codes]
         st.session_state.graph_stocks = avail_names
 
-# 분석 화면 렌더링 (버튼을 눌렀을 때만 작동)
 if st.session_state.show_summary:
     with st.spinner("자산을 계산하고 주가를 불러오는 중입니다..."):
-        # 전체 데이터가 아닌, 선택된 사람/계좌의 데이터만 쏙 뽑아서 계산 (속도 10배 향상)
         fs_stock = edited_stock[(edited_stock["소유자"].isin(st.session_state.summary_owners)) & (edited_stock["계좌명"].isin(st.session_state.summary_accs))].copy()
         fs_dep = edited_dep[(edited_dep["소유자"].isin(st.session_state.summary_owners)) & (edited_dep["계좌명"].isin(st.session_state.summary_accs))].copy()
 
@@ -243,7 +232,6 @@ if st.session_state.show_summary:
         stock_merged = stock_merged[stock_merged["잔여수량"] > 0]
         stock_merged["주식투자원금"] = stock_merged["잔여수량"] * stock_merged["평균매수단가"]
 
-        # 주가 불러오기 (선택된 데이터만 불러오므로 엄청 빠릅니다)
         current_prices = {}
         for code in fs_stock["종목코드(6자리)"].dropna().unique():
             clean_code = str(code).split('.')[0].zfill(6)
@@ -325,7 +313,6 @@ if st.session_state.show_summary:
         st.write("---")
         st.markdown("### 📈 기간별 적립식 투자 성과 추이 (VIP 리포트 양식)")
         
-        # 그래프 전용 폼 적용 (설정 변경 시 불필요한 새로고침 방지)
         with st.form("graph_form"):
             col_g1, col_g2 = st.columns([2, 1])
             selected_graph_names = col_g1.multiselect("📊 차트에 표시할 종목 선택", st.session_state.graph_stocks, default=st.session_state.graph_stocks)
@@ -412,7 +399,7 @@ if st.session_state.show_summary:
 
 
 # ==============================================================================
-# 🌟 [업그레이드 2] 3번 항목 '레이지 로딩' 폼 적용 완료
+# 🌟 [버그 수정] 3번 항목 계산을 위한 기초 준비운동(숫자 변환) 추가!
 # ==============================================================================
 st.write("---")
 st.subheader("🔍 3. 내 입맛대로 골라보기 (종목/날짜 맞춤 필터)")
@@ -436,8 +423,12 @@ if detail_submit:
 
 if st.session_state.get("show_detail"):
     with st.spinner("선택된 종목의 상세 수익률을 계산 중입니다..."):
-        # 선택된 종목만 필터링하여 계산 속도 향상
         fs_detail = edited_stock[edited_stock["종목명"].isin(st.session_state.detail_stocks)].copy()
+        
+        # 🔥 이 3줄이 바로 에러를 잡은 핵심 코드입니다! 🔥
+        fs_detail["거래단가"] = pd.to_numeric(fs_detail["거래단가"], errors='coerce').fillna(0)
+        fs_detail["수량"] = pd.to_numeric(fs_detail["수량"], errors='coerce').fillna(0)
+        fs_detail["현금흐름"] = fs_detail.apply(lambda x: -1 * x["거래단가"] * x["수량"] if x["거래종류"] == "매수" else x["거래단가"] * x["수량"], axis=1)
         
         detail_buys = fs_detail[fs_detail["거래종류"] == "매수"].groupby(["소유자", "계좌명", "종목코드(6자리)", "종목명"]).agg(총매수수량=("수량", "sum"), 총매수쓴돈=("현금흐름", lambda x: -x.sum())).reset_index()
         detail_buys["평균매수단가"] = (detail_buys["총매수쓴돈"] / detail_buys["총매수수량"]).fillna(0)
@@ -487,7 +478,6 @@ if st.session_state.get("show_detail"):
         else:
             st.info("조건에 맞는 잔여 주식이 없습니다.")
         
-        # 영수증 내역 표출
         st.markdown("#### 📅 선택된 기간의 매매 영수증")
         filtered_history = fs_detail.copy()
         if len(st.session_state.detail_dates) == 2:
@@ -501,9 +491,6 @@ if st.session_state.get("show_detail"):
             st.info("해당 조건의 거래 내역이 없습니다.")
 
 
-# ==============================================================================
-# 🌟 [업그레이드 3] 4번 항목 MDD 스캐너 '레이지 로딩' 폼 적용 완료
-# ==============================================================================
 st.write("---")
 st.subheader("🎯 4. 관심 종목 바겐세일(낙폭) 스캐너")
 st.info("💡 종목을 고르고 **[🎯 스캔 시작]**을 눌러야만 최근 1개월 시장 고점 대비 하락률을 계산합니다.")
@@ -610,7 +597,6 @@ else:
             with st.spinner("AI 멘토가 데이터를 분석하며 답변을 작성 중입니다..."):
                 try:
                     genai.configure(api_key=api_key)
-                    # AI에게 전달할 포트폴리오 텍스트 정리 (상세 조회 데이터가 있을 때만 전송)
                     portfolio_str = df_detailed.to_string() if 'df_detailed' in locals() else "상세 조회 내역 없음"
                     cash_str = account_summary[["소유자", "계좌명", "남은예수금", "계좌수익률(%)"]].to_string() if 'account_summary' in locals() else "계좌 요약 내역 없음"
                     
