@@ -25,20 +25,20 @@ st.sidebar.link_button("4. 📰 글로벌 주식 뉴스", "https://finance.naver
 st.sidebar.link_button("5. 📈 구글 파이낸스", "https://www.google.com/finance/?hl=ko", use_container_width=True)
 st.sidebar.markdown("---")
 
-# --- API 키 설정 ---
-API_FILE = "api_key.txt"
-saved_api_key = ""
-if os.path.exists(API_FILE):
-    with open(API_FILE, "r") as f:
-        saved_api_key = f.read().strip()
-
-st.sidebar.header("🤖 AI 비서 설정")
-api_key = st.sidebar.text_input("Gemini API Key", value=saved_api_key, type="password")
-if st.sidebar.button("🔑 API 키 내 컴퓨터에 저장하기", use_container_width=True):
-    with open(API_FILE, "w") as f:
-        f.write(api_key)
-    st.sidebar.success("✅ 키가 영구 저장되었습니다!")
-st.sidebar.caption("구글 AI 스튜디오에서 발급받은 키를 입력하세요.")
+# ==============================================================================
+# 🌟 [업그레이드] API 키 자동 로그인 (Streamlit Secrets 활용)
+# ==============================================================================
+st.sidebar.header("🤖 AI 멘토 상태")
+try:
+    # 스트림릿 웹사이트의 비밀 금고(Secrets)에서 키를 몰래 꺼내옵니다.
+    api_key = st.secrets["GEMINI_API_KEY"]
+    st.sidebar.success("✅ AI 멘토 시스템 연결 완벽!")
+    st.sidebar.caption("비밀 금고에서 인증키를 자동으로 불러왔습니다.")
+except:
+    # 컴퓨터에서 임시로 테스트할 때 에러가 나지 않도록 방어하는 코드
+    api_key = ""
+    st.sidebar.error("⚠️ 비밀 금고에 키가 없습니다.")
+    api_key = st.sidebar.text_input("Gemini API Key (로컬용)", type="password")
 
 @st.cache_data
 def load_stock_dict():
@@ -139,7 +139,7 @@ with tab2:
 
 with tab3:
     edited_rec = st.data_editor(df_rec, num_rows="dynamic", use_container_width=True, height=150, key="recurring", column_config={"매수주기": st.column_config.SelectboxColumn("매수주기", options=["매일(영업일)"], required=True)})
-    if st.button("🚀 적립식 자동 매수 실행! (빈 날짜 영수증 싹 채우기)", use_container_width=True):
+    if st.button("🚀 적립식 자동 매수 실행! (빈 날짜 영수증 싹 채 큰우기)", use_container_width=True):
         edited_rec.to_csv(RECURRING_FILE, index=False, encoding='utf-8-sig')
         new_orders = []
         today_str = datetime.today().strftime('%Y-%m-%d')
@@ -442,49 +442,38 @@ if not edited_stock.empty or not edited_dep.empty:
                 else:
                     st.info("해당 기간에는 거래 내역이 없습니다.")
 
-        # ==============================================================================
-        # 🌟 [버그 수정 완료] 중복 없는 깔끔한 AI 챗봇 로직
-        # ==============================================================================
         st.write("---")
         st.subheader("💬 4. AI 멘토와 실시간 대화하기 (포메뽀꼬 모드)")
         st.info("💡 위에서 즐겨찾기 한 글로벌 시황 사이트들을 볼 시간이 없다면, 아래의 [시황 브리핑] 버튼을 눌러 AI에게 대신 요약을 부탁해보세요!")
 
         if not api_key:
-            st.warning("⚠️ 왼쪽 사이드바에 Gemini API Key를 먼저 입력해야 대화가 가능합니다.")
+            st.warning("⚠️ 비밀 금고에서 인증키를 찾을 수 없습니다. 설정을 확인해 주세요.")
         else:
             col_chat1, col_chat2 = st.columns([3, 1])
             
-            # 메시지 전송용 변수
             msg_to_send = None
             
-            # 브리핑 버튼 클릭 시
             if col_chat1.button("🌍 AI 멘토에게 '오늘 글로벌 시장 흐름 종합 브리핑' 받기", use_container_width=True):
                 msg_to_send = "최근의 미국 기준금리 변동 예상(FedWatch), 시장의 공포/탐욕 지수 상태, S&P 500 전반적인 흐름, 주요 경제 뉴스를 기반으로 현재 거시 경제 시황을 분석하고, 포메뽀꼬의 장기 투자 관점에서 내가 가져야 할 멘탈을 3줄로 요약해줘."
 
-            # 지우기 버튼 클릭 시
             if col_chat2.button("🔄 대화 내용 지우기", use_container_width=True):
                 st.session_state.messages = []
                 st.session_state.chat_session = None
                 st.rerun()
 
-            # 1. 화면에 이전 대화 내용 그리기
             for msg in st.session_state.messages:
                 with st.chat_message(msg["role"]):
                     st.markdown(msg["content"])
 
-            # 2. 채팅창에서 직접 입력받은 경우
             user_input = st.chat_input("예: 나 당분간 돈 없어서 SCHD는 못 사는데, 상계 처리할 종목 딱 하나만 짚어줘.")
             if user_input:
                 msg_to_send = user_input
 
-            # 3. 보낼 메시지가 있다면(버튼 누름 OR 채팅침) 실행!
             if msg_to_send:
-                # 사용자의 질문을 저장하고 화면에 띄움
                 st.session_state.messages.append({"role": "user", "content": msg_to_send})
                 with st.chat_message("user"):
                     st.markdown(msg_to_send)
 
-                # AI가 답변할 차례
                 with st.chat_message("assistant"):
                     with st.spinner("AI 멘토가 데이터를 분석하며 답변을 작성 중입니다..."):
                         try:
@@ -514,7 +503,6 @@ if not edited_stock.empty or not edited_dep.empty:
                             response = st.session_state.chat_session.send_message(msg_to_send)
                             st.markdown(response.text)
                             
-                            # AI의 답변도 저장
                             st.session_state.messages.append({"role": "assistant", "content": response.text})
                             
                         except Exception as e:
