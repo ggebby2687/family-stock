@@ -11,13 +11,11 @@ st.set_page_config(page_title="가족 자산 대시보드", page_icon="💰", la
 st.title("💰 우리 가족 주식 통합 대시보드")
 st.write("---")
 
-# --- 대화 기록 저장을 위한 메모리 초기화 ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "chat_session" not in st.session_state:
     st.session_state.chat_session = None
 
-# 조회 버튼 상태 저장용 변수들
 if "show_summary" not in st.session_state:
     st.session_state.show_summary = False
 if "show_detail" not in st.session_state:
@@ -59,7 +57,6 @@ def load_stock_dict():
 
 stock_dict = load_stock_dict()
 
-# --- 파일 설정 ---
 PORTFOLIO_FILE = "my_portfolio.csv"
 DEPOSIT_FILE = "my_deposit.csv"
 RECURRING_FILE = "my_recurring.csv"
@@ -92,12 +89,33 @@ tab1, tab2, tab3 = st.tabs(["🛒 수동 매매 일지", "🏦 계좌 입금 내
 
 with tab1:
     with st.expander("➕ 새로운 주식 매매 기록 추가하기", expanded=True):
+        
+        # 🌟 [업그레이드] 최근 5개 데이터 추출 마법
+        recent_owners = df_stock['소유자'].dropna().drop_duplicates().head(5).tolist() if not df_stock.empty and '소유자' in df_stock.columns else []
+        recent_accs = df_stock['계좌명'].dropna().drop_duplicates().head(5).tolist() if not df_stock.empty and '계좌명' in df_stock.columns else []
+        recent_codes = df_stock['종목코드(6자리)'].dropna().drop_duplicates().head(5).tolist() if not df_stock.empty and '종목코드(6자리)' in df_stock.columns else []
+        
+        # 종목코드는 보기 편하게 '코드 (이름)' 형태로 변환
+        recent_codes_display = []
+        for c in recent_codes:
+            code_str = str(c).split('.')[0].zfill(6)
+            name = stock_dict.get(code_str, "")
+            recent_codes_display.append(f"{code_str} ({name})" if name else code_str)
+
         with st.form("add_stock_form", clear_on_submit=True):
+            st.caption("💡 **팁:** 위쪽 선택창에서 최근 5개 내역을 클릭만으로 쉽게 고르세요! (새로운 정보를 적으려면 [✍️ 새로 작성]을 고르고 아래 빈칸에 적으세요)")
             c1, c2, c3, c4 = st.columns(4)
-            new_owner = c1.text_input("👤 소유자 (예: 남편, 아내)")
-            new_acc = c2.text_input("🏦 계좌명 (예: ISA, 연금계좌)")
+            
+            sel_owner = c1.selectbox("👤 소유자 (최근 5개)", ["✍️ 새로 작성"] + recent_owners)
+            new_owner = c1.text_input("새 소유자 입력란", label_visibility="collapsed", placeholder="새로 작성시 여기에 입력")
+
+            sel_acc = c2.selectbox("🏦 계좌명 (최근 5개)", ["✍️ 새로 작성"] + recent_accs)
+            new_acc = c2.text_input("새 계좌명 입력란", label_visibility="collapsed", placeholder="새로 작성시 여기에 입력")
+
             new_type = c3.selectbox("🔄 거래종류", ["매수", "매도"])
-            new_code = c4.text_input("📌 종목코드(6자리)")
+            
+            sel_code = c4.selectbox("📌 종목코드 (최근 5개)", ["✍️ 새로 작성"] + recent_codes_display)
+            new_code = c4.text_input("새 종목코드 입력란", label_visibility="collapsed", placeholder="새로 작성시 6자리 입력")
 
             c5, c6, c7, c8 = st.columns(4)
             new_date = c5.date_input("📅 거래일자", value=datetime.today())
@@ -107,8 +125,13 @@ with tab1:
 
             submitted = st.form_submit_button("💾 이 기록 추가하기", use_container_width=True)
             if submitted:
-                if new_owner and new_acc and new_code and new_qty > 0:
-                    new_row = pd.DataFrame([{"소유자": new_owner, "계좌명": new_acc, "거래종류": new_type, "종목코드(6자리)": new_code, "거래일자": new_date.strftime("%Y-%m-%d"), "거래단가": new_price, "수량": new_qty, "메모": new_memo}])
+                # 선택창과 직접입력창 값을 부드럽게 연결해주는 로직
+                final_owner = new_owner.strip() if sel_owner == "✍️ 새로 작성" else sel_owner
+                final_acc = new_acc.strip() if sel_acc == "✍️ 새로 작성" else sel_acc
+                final_code = new_code.strip() if sel_code == "✍️ 새로 작성" else sel_code.split(" ")[0]
+
+                if final_owner and final_acc and final_code and new_qty > 0:
+                    new_row = pd.DataFrame([{"소유자": final_owner, "계좌명": final_acc, "거래종류": new_type, "종목코드(6자리)": final_code, "거래일자": new_date.strftime("%Y-%m-%d"), "거래단가": new_price, "수량": new_qty, "메모": new_memo}])
                     df_to_save = df_stock.drop(columns=['종목명'], errors='ignore')
                     df_stock_updated = pd.concat([new_row, df_to_save], ignore_index=True)
                     df_stock_updated.to_csv(PORTFOLIO_FILE, index=False, encoding='utf-8-sig')
@@ -122,10 +145,21 @@ with tab1:
 
 with tab2:
     with st.expander("➕ 새로운 입금 기록 추가하기", expanded=True):
+        
+        # 입금 기록에도 똑같이 최근 5개 불러오기 적용
+        recent_dep_owners = df_dep['소유자'].dropna().drop_duplicates().head(5).tolist() if not df_dep.empty and '소유자' in df_dep.columns else []
+        recent_dep_accs = df_dep['계좌명'].dropna().drop_duplicates().head(5).tolist() if not df_dep.empty and '계좌명' in df_dep.columns else []
+        
         with st.form("add_dep_form", clear_on_submit=True):
+            st.caption("💡 **팁:** 위쪽 선택창에서 최근 5개 내역을 클릭만으로 쉽게 고르세요!")
             c1, c2, c3 = st.columns(3)
-            new_dep_owner = c1.text_input("👤 소유자")
-            new_dep_acc = c2.text_input("🏦 계좌명")
+            
+            sel_dep_owner = c1.selectbox("👤 소유자 (최근 5개)", ["✍️ 새로 작성"] + recent_dep_owners)
+            new_dep_owner = c1.text_input("새 소유자 입력란", label_visibility="collapsed", placeholder="새로 작성시 여기에 입력")
+
+            sel_dep_acc = c2.selectbox("🏦 계좌명 (최근 5개)", ["✍️ 새로 작성"] + recent_dep_accs)
+            new_dep_acc = c2.text_input("새 계좌명 입력란", label_visibility="collapsed", placeholder="새로 작성시 여기에 입력")
+
             new_dep_date = c3.date_input("📅 입금일자", value=datetime.today())
 
             c4, c5 = st.columns([1, 2])
@@ -134,8 +168,11 @@ with tab2:
 
             submitted_dep = st.form_submit_button("💾 이 기록 추가하기", use_container_width=True)
             if submitted_dep:
-                if new_dep_owner and new_dep_acc and new_dep_amt > 0:
-                    new_row_dep = pd.DataFrame([{"소유자": new_dep_owner, "계좌명": new_dep_acc, "입금일자": new_dep_date.strftime("%Y-%m-%d"), "입금액": new_dep_amt, "메모": new_dep_memo}])
+                final_dep_owner = new_dep_owner.strip() if sel_dep_owner == "✍️ 새로 작성" else sel_dep_owner
+                final_dep_acc = new_dep_acc.strip() if sel_dep_acc == "✍️ 새로 작성" else sel_dep_acc
+                
+                if final_dep_owner and final_dep_acc and new_dep_amt > 0:
+                    new_row_dep = pd.DataFrame([{"소유자": final_dep_owner, "계좌명": final_dep_acc, "입금일자": new_dep_date.strftime("%Y-%m-%d"), "입금액": new_dep_amt, "메모": new_dep_memo}])
                     df_dep_updated = pd.concat([new_row_dep, df_dep], ignore_index=True)
                     df_dep_updated.to_csv(DEPOSIT_FILE, index=False, encoding='utf-8-sig')
                     st.success("✅ 입금 기록이 성공적으로 추가되었습니다!")
@@ -398,9 +435,6 @@ if st.session_state.show_summary:
             st.info("선택하신 종목에 해당하는 거래 내역이 없습니다.")
 
 
-# ==============================================================================
-# 🌟 [버그 수정] 3번 항목 계산을 위한 기초 준비운동(숫자 변환) 추가!
-# ==============================================================================
 st.write("---")
 st.subheader("🔍 3. 내 입맛대로 골라보기 (종목/날짜 맞춤 필터)")
 all_stocks_names = df_stock["종목명"].dropna().unique().tolist() if not df_stock.empty else []
@@ -425,7 +459,6 @@ if st.session_state.get("show_detail"):
     with st.spinner("선택된 종목의 상세 수익률을 계산 중입니다..."):
         fs_detail = edited_stock[edited_stock["종목명"].isin(st.session_state.detail_stocks)].copy()
         
-        # 🔥 이 3줄이 바로 에러를 잡은 핵심 코드입니다! 🔥
         fs_detail["거래단가"] = pd.to_numeric(fs_detail["거래단가"], errors='coerce').fillna(0)
         fs_detail["수량"] = pd.to_numeric(fs_detail["수량"], errors='coerce').fillna(0)
         fs_detail["현금흐름"] = fs_detail.apply(lambda x: -1 * x["거래단가"] * x["수량"] if x["거래종류"] == "매수" else x["거래단가"] * x["수량"], axis=1)
