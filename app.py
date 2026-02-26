@@ -87,98 +87,118 @@ if not df_dep.empty:
 st.subheader("📝 1. 나의 자산 데이터 입력")
 tab1, tab2, tab3 = st.tabs(["🛒 수동 매매 일지", "🏦 계좌 입금 내역", "⏳ 적립식 봇 설정 (자동)"])
 
+# ==============================================================================
+# 🌟 [버그 및 UI 헷갈림 완벽 수정] 폼 제거 및 동적 입력창 구현
+# ==============================================================================
 with tab1:
     with st.expander("➕ 새로운 주식 매매 기록 추가하기", expanded=True):
+        st.caption("💡 **팁:** 기존 정보는 클릭해서 부르고, 없는 정보는 **[✍️ 직접 새로 입력]**을 고르면 타자를 칠 수 있는 마법의 빈칸이 나타납니다!")
         
-        # 🌟 [업그레이드] 최근 5개 데이터 추출 마법
         recent_owners = df_stock['소유자'].dropna().drop_duplicates().head(5).tolist() if not df_stock.empty and '소유자' in df_stock.columns else []
         recent_accs = df_stock['계좌명'].dropna().drop_duplicates().head(5).tolist() if not df_stock.empty and '계좌명' in df_stock.columns else []
         recent_codes = df_stock['종목코드(6자리)'].dropna().drop_duplicates().head(5).tolist() if not df_stock.empty and '종목코드(6자리)' in df_stock.columns else []
         
-        # 종목코드는 보기 편하게 '코드 (이름)' 형태로 변환
         recent_codes_display = []
         for c in recent_codes:
             code_str = str(c).split('.')[0].zfill(6)
             name = stock_dict.get(code_str, "")
             recent_codes_display.append(f"{code_str} ({name})" if name else code_str)
 
-        with st.form("add_stock_form", clear_on_submit=True):
-            st.caption("💡 **팁:** 위쪽 선택창에서 최근 5개 내역을 클릭만으로 쉽게 고르세요! (새로운 정보를 적으려면 [✍️ 새로 작성]을 고르고 아래 빈칸에 적으세요)")
-            c1, c2, c3, c4 = st.columns(4)
-            
-            sel_owner = c1.selectbox("👤 소유자 (최근 5개)", ["✍️ 새로 작성"] + recent_owners)
-            new_owner = c1.text_input("새 소유자 입력란", label_visibility="collapsed", placeholder="새로 작성시 여기에 입력")
+        c1, c2, c3, c4 = st.columns(4)
+        
+        # 1. 소유자 스마트 입력
+        sel_owner = c1.selectbox("👤 소유자 선택", ["✍️ 직접 새로 입력"] + recent_owners, key="sel_owner")
+        if sel_owner == "✍️ 직접 새로 입력":
+            final_owner = c1.text_input("새 소유자 타자입력", placeholder="예: 남편", key="new_owner")
+        else:
+            final_owner = sel_owner
 
-            sel_acc = c2.selectbox("🏦 계좌명 (최근 5개)", ["✍️ 새로 작성"] + recent_accs)
-            new_acc = c2.text_input("새 계좌명 입력란", label_visibility="collapsed", placeholder="새로 작성시 여기에 입력")
+        # 2. 계좌명 스마트 입력
+        sel_acc = c2.selectbox("🏦 계좌명 선택", ["✍️ 직접 새로 입력"] + recent_accs, key="sel_acc")
+        if sel_acc == "✍️ 직접 새로 입력":
+            final_acc = c2.text_input("새 계좌명 타자입력", placeholder="예: ISA", key="new_acc")
+        else:
+            final_acc = sel_acc
 
-            new_type = c3.selectbox("🔄 거래종류", ["매수", "매도"])
-            
-            sel_code = c4.selectbox("📌 종목코드 (최근 5개)", ["✍️ 새로 작성"] + recent_codes_display)
-            new_code = c4.text_input("새 종목코드 입력란", label_visibility="collapsed", placeholder="새로 작성시 6자리 입력")
+        new_type = c3.selectbox("🔄 거래종류", ["매수", "매도"], key="new_type")
+        
+        # 3. 종목코드 스마트 입력
+        sel_code = c4.selectbox("📌 종목코드 선택", ["✍️ 직접 새로 입력"] + recent_codes_display, key="sel_code")
+        if sel_code == "✍️ 직접 새로 입력":
+            final_code_raw = c4.text_input("새 종목코드 직접 타자입력", placeholder="예: 367380", key="new_code")
+            final_code = final_code_raw.strip() if final_code_raw else ""
+        else:
+            final_code = sel_code.split(" ")[0]
 
-            c5, c6, c7, c8 = st.columns(4)
-            new_date = c5.date_input("📅 거래일자", value=datetime.today())
-            new_price = c6.number_input("💵 거래단가 (원)", min_value=0, step=100)
-            new_qty = c7.number_input("📦 수량 (주)", min_value=0.0, step=1.0)
-            new_memo = c8.text_input("📝 메모 (선택)")
+        c5, c6, c7, c8 = st.columns(4)
+        new_date = c5.date_input("📅 거래일자", value=datetime.today(), key="new_date")
+        new_price = c6.number_input("💵 거래단가 (원)", min_value=0, step=100, key="new_price")
+        new_qty = c7.number_input("📦 수량 (주)", min_value=0.0, step=1.0, key="new_qty")
+        new_memo = c8.text_input("📝 메모 (선택)", key="new_memo")
 
-            submitted = st.form_submit_button("💾 이 기록 추가하기", use_container_width=True)
-            if submitted:
-                # 선택창과 직접입력창 값을 부드럽게 연결해주는 로직
-                final_owner = new_owner.strip() if sel_owner == "✍️ 새로 작성" else sel_owner
-                final_acc = new_acc.strip() if sel_acc == "✍️ 새로 작성" else sel_acc
-                final_code = new_code.strip() if sel_code == "✍️ 새로 작성" else sel_code.split(" ")[0]
-
-                if final_owner and final_acc and final_code and new_qty > 0:
-                    new_row = pd.DataFrame([{"소유자": final_owner, "계좌명": final_acc, "거래종류": new_type, "종목코드(6자리)": final_code, "거래일자": new_date.strftime("%Y-%m-%d"), "거래단가": new_price, "수량": new_qty, "메모": new_memo}])
-                    df_to_save = df_stock.drop(columns=['종목명'], errors='ignore')
-                    df_stock_updated = pd.concat([new_row, df_to_save], ignore_index=True)
-                    df_stock_updated.to_csv(PORTFOLIO_FILE, index=False, encoding='utf-8-sig')
-                    st.success("✅ 매매 기록이 성공적으로 추가되었습니다!")
-                    st.rerun()
-                else:
-                    st.error("⚠️ 소유자, 계좌명, 종목코드, 수량을 정확히 입력해주세요.")
+        # 저장 버튼 클릭 시 동작 로직
+        if st.button("💾 이 기록 추가하기", use_container_width=True, key="btn_save_stock"):
+            if final_owner and final_acc and final_code and new_qty > 0:
+                new_row = pd.DataFrame([{"소유자": final_owner, "계좌명": final_acc, "거래종류": new_type, "종목코드(6자리)": final_code, "거래일자": new_date.strftime("%Y-%m-%d"), "거래단가": new_price, "수량": new_qty, "메모": new_memo}])
+                df_to_save = df_stock.drop(columns=['종목명'], errors='ignore')
+                df_stock_updated = pd.concat([new_row, df_to_save], ignore_index=True)
+                df_stock_updated.to_csv(PORTFOLIO_FILE, index=False, encoding='utf-8-sig')
+                
+                # 입력창 깔끔하게 청소하기 (캐시 삭제)
+                keys_to_clear = ["sel_owner", "new_owner", "sel_acc", "new_acc", "new_type", "sel_code", "new_code", "new_date", "new_price", "new_qty", "new_memo"]
+                for k in keys_to_clear:
+                    if k in st.session_state:
+                        del st.session_state[k]
+                        
+                st.success("✅ 매매 기록이 성공적으로 추가되었습니다!")
+                st.rerun()
+            else:
+                st.error("⚠️ 소유자, 계좌명, 종목코드, 수량을 전부 입력했는지 다시 한번 확인해주세요.")
     
     st.markdown("#### 📋 기존 매매 기록 수정 및 확인")
     edited_stock = st.data_editor(df_stock, num_rows="dynamic", use_container_width=True, height=200, key="stock", column_config={"거래종류": st.column_config.SelectboxColumn("매수/매도", options=["매수", "매도"], required=True), "종목명": st.column_config.TextColumn("종목명 (자동표시)", disabled=True)})
 
 with tab2:
     with st.expander("➕ 새로운 입금 기록 추가하기", expanded=True):
+        st.caption("💡 기존 정보는 클릭해서 부르고, 없는 정보는 **[✍️ 직접 새로 입력]**을 고르세요!")
         
-        # 입금 기록에도 똑같이 최근 5개 불러오기 적용
         recent_dep_owners = df_dep['소유자'].dropna().drop_duplicates().head(5).tolist() if not df_dep.empty and '소유자' in df_dep.columns else []
         recent_dep_accs = df_dep['계좌명'].dropna().drop_duplicates().head(5).tolist() if not df_dep.empty and '계좌명' in df_dep.columns else []
         
-        with st.form("add_dep_form", clear_on_submit=True):
-            st.caption("💡 **팁:** 위쪽 선택창에서 최근 5개 내역을 클릭만으로 쉽게 고르세요!")
-            c1, c2, c3 = st.columns(3)
-            
-            sel_dep_owner = c1.selectbox("👤 소유자 (최근 5개)", ["✍️ 새로 작성"] + recent_dep_owners)
-            new_dep_owner = c1.text_input("새 소유자 입력란", label_visibility="collapsed", placeholder="새로 작성시 여기에 입력")
+        c1, c2, c3 = st.columns(3)
+        sel_dep_owner = c1.selectbox("👤 소유자 선택", ["✍️ 직접 새로 입력"] + recent_dep_owners, key="sel_dep_owner")
+        if sel_dep_owner == "✍️ 직접 새로 입력":
+            final_dep_owner = c1.text_input("새 소유자 타자입력", key="new_dep_owner")
+        else:
+            final_dep_owner = sel_dep_owner
 
-            sel_dep_acc = c2.selectbox("🏦 계좌명 (최근 5개)", ["✍️ 새로 작성"] + recent_dep_accs)
-            new_dep_acc = c2.text_input("새 계좌명 입력란", label_visibility="collapsed", placeholder="새로 작성시 여기에 입력")
+        sel_dep_acc = c2.selectbox("🏦 계좌명 선택", ["✍️ 직접 새로 입력"] + recent_dep_accs, key="sel_dep_acc")
+        if sel_dep_acc == "✍️ 직접 새로 입력":
+            final_dep_acc = c2.text_input("새 계좌명 타자입력", key="new_dep_acc")
+        else:
+            final_dep_acc = sel_dep_acc
 
-            new_dep_date = c3.date_input("📅 입금일자", value=datetime.today())
+        new_dep_date = c3.date_input("📅 입금일자", value=datetime.today(), key="new_dep_date")
 
-            c4, c5 = st.columns([1, 2])
-            new_dep_amt = c4.number_input("💵 입금액 (원)", min_value=0, step=10000)
-            new_dep_memo = c5.text_input("📝 메모 (선택)")
+        c4, c5 = st.columns([1, 2])
+        new_dep_amt = c4.number_input("💵 입금액 (원)", min_value=0, step=10000, key="new_dep_amt")
+        new_dep_memo = c5.text_input("📝 메모 (선택)", key="new_dep_memo")
 
-            submitted_dep = st.form_submit_button("💾 이 기록 추가하기", use_container_width=True)
-            if submitted_dep:
-                final_dep_owner = new_dep_owner.strip() if sel_dep_owner == "✍️ 새로 작성" else sel_dep_owner
-                final_dep_acc = new_dep_acc.strip() if sel_dep_acc == "✍️ 새로 작성" else sel_dep_acc
+        if st.button("💾 이 기록 추가하기", use_container_width=True, key="btn_save_dep"):
+            if final_dep_owner and final_dep_acc and new_dep_amt > 0:
+                new_row_dep = pd.DataFrame([{"소유자": final_dep_owner, "계좌명": final_dep_acc, "입금일자": new_dep_date.strftime("%Y-%m-%d"), "입금액": new_dep_amt, "메모": new_dep_memo}])
+                df_dep_updated = pd.concat([new_row_dep, df_dep], ignore_index=True)
+                df_dep_updated.to_csv(DEPOSIT_FILE, index=False, encoding='utf-8-sig')
                 
-                if final_dep_owner and final_dep_acc and new_dep_amt > 0:
-                    new_row_dep = pd.DataFrame([{"소유자": final_dep_owner, "계좌명": final_dep_acc, "입금일자": new_dep_date.strftime("%Y-%m-%d"), "입금액": new_dep_amt, "메모": new_dep_memo}])
-                    df_dep_updated = pd.concat([new_row_dep, df_dep], ignore_index=True)
-                    df_dep_updated.to_csv(DEPOSIT_FILE, index=False, encoding='utf-8-sig')
-                    st.success("✅ 입금 기록이 성공적으로 추가되었습니다!")
-                    st.rerun()
-                else:
-                    st.error("⚠️ 소유자, 계좌명, 입금액을 정확히 입력해주세요.")
+                keys_to_clear_dep = ["sel_dep_owner", "new_dep_owner", "sel_dep_acc", "new_dep_acc", "new_dep_date", "new_dep_amt", "new_dep_memo"]
+                for k in keys_to_clear_dep:
+                    if k in st.session_state:
+                        del st.session_state[k]
+                        
+                st.success("✅ 입금 기록이 성공적으로 추가되었습니다!")
+                st.rerun()
+            else:
+                st.error("⚠️ 소유자, 계좌명, 입금액을 정확히 입력해주세요.")
                     
     st.markdown("#### 📋 기존 입금 내역 수정 및 확인")
     edited_dep = st.data_editor(df_dep, num_rows="dynamic", use_container_width=True, height=200, key="deposit")
@@ -524,9 +544,12 @@ if st.session_state.get("show_detail"):
             st.info("해당 조건의 거래 내역이 없습니다.")
 
 
+# ==============================================================================
+# 🌟 [롤백 완료] 포메뽀꼬 스캐너: 최근 '30일(1달)' 고점 대비 하락률로 복귀!
+# ==============================================================================
 st.write("---")
 st.subheader("🎯 4. 관심 종목 바겐세일(낙폭) 스캐너")
-st.info("💡 종목을 고르고 **[🎯 스캔 시작]**을 눌러야만 최근 1개월 시장 고점 대비 하락률을 계산합니다.")
+st.info("💡 종목을 고르고 **[🎯 스캔 시작]**을 눌러야만 '최근 1개월(30일) 단기 고점' 대비 하락률을 계산합니다.")
 
 default_target_codes = ["367380", "360200", "460330"]
 all_krx_names = list(stock_dict.values())
@@ -553,7 +576,7 @@ if st.session_state.get("show_mdd"):
             code = name_to_code.get(name)
             if code:
                 end_d = datetime.today()
-                start_d = end_d - timedelta(days=30)
+                start_d = end_d - timedelta(days=30)  # 🔥 다시 30일(1달)로 롤백 완료!
                 try:
                     df_hist = fdr.DataReader(code, start_d.strftime('%Y-%m-%d'), end_d.strftime('%Y-%m-%d'))
                     if not df_hist.empty:
@@ -571,7 +594,7 @@ if st.session_state.get("show_mdd"):
                             
                         watch_results.append({
                             "종목명": name,
-                            "최근 1달 고점": f"{high_price:,}원",
+                            "최근 1달 고점": f"{high_price:,}원", # 🔥 글자도 롤백 완료!
                             "현재가": f"{curr_price:,}원",
                             "고점 대비 하락률": drop_rate,
                             "포메뽀꼬 시그널": signal
