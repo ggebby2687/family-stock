@@ -7,7 +7,23 @@ import plotly.graph_objects as go
 import google.generativeai as genai
 from datetime import datetime, timedelta
 
+# 페이지 기본 설정 (가장 위에 있어야 함)
 st.set_page_config(page_title="가족 자산 대시보드", page_icon="💰", layout="wide")
+
+# ==============================================================================
+# 🎨 [디자인 업그레이드] 전체 폰트 및 여백 깔끔하게 다듬기 (CSS)
+# ==============================================================================
+st.markdown("""
+<style>
+    /* 상단 여백을 살짝 줄여서 화면을 넓게 씁니다 */
+    .block-container { padding-top: 2rem; padding-bottom: 2rem; }
+    /* 소제목 텍스트에 색상 포인트를 주어 눈에 띄게 합니다 */
+    h2, h3 { color: #1E88E5; font-family: 'Noto Sans KR', sans-serif; }
+    /* 구분선을 조금 더 연하게 */
+    hr { margin-top: 1rem; margin-bottom: 1rem; border-color: #e0e0e0; }
+</style>
+""", unsafe_allow_html=True)
+
 st.title("💰 우리 가족 주식 통합 대시보드")
 st.write("---")
 
@@ -34,8 +50,7 @@ st.sidebar.markdown("---")
 st.sidebar.header("🤖 AI 멘토 상태")
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
-    st.sidebar.success("✅ AI 멘토 시스템 연결 완벽!")
-    st.sidebar.caption("비밀 금고에서 인증키를 자동으로 불러왔습니다.")
+    st.sidebar.success("✅ AI 멘토 연결 완벽!")
 except:
     api_key = ""
     st.sidebar.error("⚠️ 비밀 금고에 키가 없습니다.")
@@ -84,12 +99,10 @@ else:
 if not df_dep.empty:
     df_dep = df_dep.sort_values(by="입금일자", ascending=False, na_position='last').reset_index(drop=True)
 
+
 st.subheader("📝 1. 나의 자산 데이터 입력")
 tab1, tab2, tab3 = st.tabs(["🛒 수동 매매 일지", "🏦 계좌 입금 내역", "⏳ 적립식 봇 설정 (자동)"])
 
-# ==============================================================================
-# 🌟 [버그 및 UI 헷갈림 완벽 수정] 폼 제거 및 동적 입력창 구현
-# ==============================================================================
 with tab1:
     with st.expander("➕ 새로운 주식 매매 기록 추가하기", expanded=True):
         st.caption("💡 **팁:** 기존 정보는 클릭해서 부르고, 없는 정보는 **[✍️ 직접 새로 입력]**을 고르면 타자를 칠 수 있는 마법의 빈칸이 나타납니다!")
@@ -106,14 +119,12 @@ with tab1:
 
         c1, c2, c3, c4 = st.columns(4)
         
-        # 1. 소유자 스마트 입력
         sel_owner = c1.selectbox("👤 소유자 선택", ["✍️ 직접 새로 입력"] + recent_owners, key="sel_owner")
         if sel_owner == "✍️ 직접 새로 입력":
             final_owner = c1.text_input("새 소유자 타자입력", placeholder="예: 남편", key="new_owner")
         else:
             final_owner = sel_owner
 
-        # 2. 계좌명 스마트 입력
         sel_acc = c2.selectbox("🏦 계좌명 선택", ["✍️ 직접 새로 입력"] + recent_accs, key="sel_acc")
         if sel_acc == "✍️ 직접 새로 입력":
             final_acc = c2.text_input("새 계좌명 타자입력", placeholder="예: ISA", key="new_acc")
@@ -122,7 +133,6 @@ with tab1:
 
         new_type = c3.selectbox("🔄 거래종류", ["매수", "매도"], key="new_type")
         
-        # 3. 종목코드 스마트 입력
         sel_code = c4.selectbox("📌 종목코드 선택", ["✍️ 직접 새로 입력"] + recent_codes_display, key="sel_code")
         if sel_code == "✍️ 직접 새로 입력":
             final_code_raw = c4.text_input("새 종목코드 직접 타자입력", placeholder="예: 367380", key="new_code")
@@ -136,15 +146,15 @@ with tab1:
         new_qty = c7.number_input("📦 수량 (주)", min_value=0.0, step=1.0, key="new_qty")
         new_memo = c8.text_input("📝 메모 (선택)", key="new_memo")
 
-        # 저장 버튼 클릭 시 동작 로직
-        if st.button("💾 이 기록 추가하기", use_container_width=True, key="btn_save_stock"):
+        st.write("") # 버튼 위 여백
+        # 🔥 [업그레이드] type="primary" 를 추가하여 붉은색 테마 버튼으로 강력하게 강조!
+        if st.button("💾 이 매매 기록 확실히 추가하기", type="primary", use_container_width=True, key="btn_save_stock"):
             if final_owner and final_acc and final_code and new_qty > 0:
                 new_row = pd.DataFrame([{"소유자": final_owner, "계좌명": final_acc, "거래종류": new_type, "종목코드(6자리)": final_code, "거래일자": new_date.strftime("%Y-%m-%d"), "거래단가": new_price, "수량": new_qty, "메모": new_memo}])
                 df_to_save = df_stock.drop(columns=['종목명'], errors='ignore')
                 df_stock_updated = pd.concat([new_row, df_to_save], ignore_index=True)
                 df_stock_updated.to_csv(PORTFOLIO_FILE, index=False, encoding='utf-8-sig')
                 
-                # 입력창 깔끔하게 청소하기 (캐시 삭제)
                 keys_to_clear = ["sel_owner", "new_owner", "sel_acc", "new_acc", "new_type", "sel_code", "new_code", "new_date", "new_price", "new_qty", "new_memo"]
                 for k in keys_to_clear:
                     if k in st.session_state:
@@ -155,7 +165,7 @@ with tab1:
             else:
                 st.error("⚠️ 소유자, 계좌명, 종목코드, 수량을 전부 입력했는지 다시 한번 확인해주세요.")
     
-    st.markdown("#### 📋 기존 매매 기록 수정 및 확인")
+    st.markdown("#### 📋 기존 매매 기록 (더블클릭하여 수정하세요)")
     edited_stock = st.data_editor(df_stock, num_rows="dynamic", use_container_width=True, height=200, key="stock", column_config={"거래종류": st.column_config.SelectboxColumn("매수/매도", options=["매수", "매도"], required=True), "종목명": st.column_config.TextColumn("종목명 (자동표시)", disabled=True)})
 
 with tab2:
@@ -184,7 +194,9 @@ with tab2:
         new_dep_amt = c4.number_input("💵 입금액 (원)", min_value=0, step=10000, key="new_dep_amt")
         new_dep_memo = c5.text_input("📝 메모 (선택)", key="new_dep_memo")
 
-        if st.button("💾 이 기록 추가하기", use_container_width=True, key="btn_save_dep"):
+        st.write("")
+        # 🔥 [업그레이드] type="primary"
+        if st.button("💾 이 입금 기록 확실히 추가하기", type="primary", use_container_width=True, key="btn_save_dep"):
             if final_dep_owner and final_dep_acc and new_dep_amt > 0:
                 new_row_dep = pd.DataFrame([{"소유자": final_dep_owner, "계좌명": final_dep_acc, "입금일자": new_dep_date.strftime("%Y-%m-%d"), "입금액": new_dep_amt, "메모": new_dep_memo}])
                 df_dep_updated = pd.concat([new_row_dep, df_dep], ignore_index=True)
@@ -200,12 +212,15 @@ with tab2:
             else:
                 st.error("⚠️ 소유자, 계좌명, 입금액을 정확히 입력해주세요.")
                     
-    st.markdown("#### 📋 기존 입금 내역 수정 및 확인")
+    st.markdown("#### 📋 기존 입금 내역 (더블클릭하여 수정하세요)")
     edited_dep = st.data_editor(df_dep, num_rows="dynamic", use_container_width=True, height=200, key="deposit")
 
 with tab3:
     edited_rec = st.data_editor(df_rec, num_rows="dynamic", use_container_width=True, height=150, key="recurring", column_config={"매수주기": st.column_config.SelectboxColumn("매수주기", options=["매일(영업일)"], required=True)})
-    if st.button("🚀 적립식 자동 매수 실행! (빈 날짜 영수증 싹 채우기)", use_container_width=True):
+    
+    st.write("")
+    # 🔥 [업그레이드] 봇 실행 버튼도 눈에 띄게!
+    if st.button("🚀 적립식 자동 매수 실행! (빈 날짜 영수증 싹 채우기)", type="primary", use_container_width=True):
         edited_rec.to_csv(RECURRING_FILE, index=False, encoding='utf-8-sig')
         new_orders = []
         today_str = datetime.today().strftime('%Y-%m-%d')
@@ -235,23 +250,31 @@ with tab3:
         else:
             st.info("✅ 이미 오늘까지의 적립식 매수가 모두 완료되어 최신 상태입니다.")
 
-if st.button("💾 표에서 직접 수정한 데이터 저장 및 새로고침", use_container_width=True):
+# ==============================================================================
+# 🚨 가장 중요한 마스터 저장 버튼 - 절대 잊지 않게!
+# ==============================================================================
+st.write("")
+if st.button("💾 ☝️ 표 안에서 직접 수정한 내용들 [최종 저장] 하기", type="primary", use_container_width=True):
     edited_stock.drop(columns=['종목명'], errors='ignore').to_csv(PORTFOLIO_FILE, index=False, encoding='utf-8-sig')
     edited_dep.to_csv(DEPOSIT_FILE, index=False, encoding='utf-8-sig')
-    st.success("✅ 표 수정 내역 저장 완료!")
+    st.success("✅ 표 수정 내역 완벽하게 저장 완료!")
     st.rerun()
 
 st.write("---")
+
 st.subheader("📊 2. 사람별/계좌별 전체 자산 요약")
 all_owners = df_stock["소유자"].dropna().unique().tolist() if not df_stock.empty else []
 all_accs = df_stock["계좌명"].dropna().unique().tolist() if not df_stock.empty else []
 
 with st.form("summary_form"):
-    st.info("💡 분석을 원하는 사람과 계좌를 선택한 후 **[📊 조회하기]** 버튼을 눌러야 화면이 나타납니다.")
+    st.info("💡 분석을 원하는 사람과 계좌를 선택한 후 **[📊 요약 조회하기]** 버튼을 눌러야 화면이 나타납니다.")
     col_top1, col_top2 = st.columns(2)
     selected_owners = col_top1.multiselect("👤 사람 선택", all_owners, default=[])
     selected_accs = col_top2.multiselect("🏦 계좌 선택", all_accs, default=[])
-    summary_submit = st.form_submit_button("📊 조회하기 (자산 요약 계산)", use_container_width=True)
+    
+    st.write("")
+    # 🔥 [업그레이드] type="primary"
+    summary_submit = st.form_submit_button("📊 자산 요약 조회하기", type="primary", use_container_width=True)
 
 if summary_submit:
     if not selected_owners or not selected_accs:
@@ -374,7 +397,8 @@ if st.session_state.show_summary:
             col_g1, col_g2 = st.columns([2, 1])
             selected_graph_names = col_g1.multiselect("📊 차트에 표시할 종목 선택", st.session_state.graph_stocks, default=st.session_state.graph_stocks)
             time_res = col_g2.radio("⏱️ 조회 단위", ["일별 (매일의 흐름)", "월별 (월말 기준 요약)"], horizontal=True)
-            graph_btn = st.form_submit_button("📈 그래프 업데이트")
+            st.write("")
+            graph_btn = st.form_submit_button("📈 그래프 업데이트", type="primary")
             
         name_to_code = {v: k for k, v in stock_dict.items()}
         selected_graph_codes = [name_to_code.get(n) for n in selected_graph_names if name_to_code.get(n)]
@@ -464,7 +488,9 @@ with st.form("detail_form"):
     col_f1, col_f2 = st.columns(2)
     selected_stocks_table = col_f1.multiselect("📈 표에 표시할 종목 선택", all_stocks_names, default=[])
     date_filter = col_f2.date_input("📅 영수증 날짜별 조회 (시작일 - 종료일)", value=[])
-    detail_submit = st.form_submit_button("🔍 상세 내역 조회하기", use_container_width=True)
+    
+    st.write("")
+    detail_submit = st.form_submit_button("🔍 상세 내역 조회하기", type="primary", use_container_width=True)
 
 if detail_submit:
     if not selected_stocks_table:
@@ -544,12 +570,9 @@ if st.session_state.get("show_detail"):
             st.info("해당 조건의 거래 내역이 없습니다.")
 
 
-# ==============================================================================
-# 🌟 [롤백 완료] 포메뽀꼬 스캐너: 최근 '30일(1달)' 고점 대비 하락률로 복귀!
-# ==============================================================================
 st.write("---")
 st.subheader("🎯 4. 관심 종목 바겐세일(낙폭) 스캐너")
-st.info("💡 종목을 고르고 **[🎯 스캔 시작]**을 눌러야만 '최근 1개월(30일) 단기 고점' 대비 하락률을 계산합니다.")
+st.info("💡 종목을 고르고 **[🎯 스캔 시작]**을 눌러야만 최근 '1개월(30일) 고점' 대비 하락률을 계산합니다.")
 
 default_target_codes = ["367380", "360200", "460330"]
 all_krx_names = list(stock_dict.values())
@@ -557,7 +580,8 @@ default_target_names = [stock_dict.get(c, c) for c in default_target_codes if c 
 
 with st.form("mdd_form"):
     selected_watch_names = st.multiselect("🔍 감시할 관심 종목을 추가/삭제하세요", all_krx_names, default=default_target_names)
-    mdd_submit = st.form_submit_button("🎯 바겐세일 스캔 시작", use_container_width=True)
+    st.write("")
+    mdd_submit = st.form_submit_button("🎯 바겐세일 스캔 시작", type="primary", use_container_width=True)
     
 if mdd_submit:
     if not selected_watch_names:
@@ -576,7 +600,7 @@ if st.session_state.get("show_mdd"):
             code = name_to_code.get(name)
             if code:
                 end_d = datetime.today()
-                start_d = end_d - timedelta(days=30)  # 🔥 다시 30일(1달)로 롤백 완료!
+                start_d = end_d - timedelta(days=30)
                 try:
                     df_hist = fdr.DataReader(code, start_d.strftime('%Y-%m-%d'), end_d.strftime('%Y-%m-%d'))
                     if not df_hist.empty:
@@ -594,7 +618,7 @@ if st.session_state.get("show_mdd"):
                             
                         watch_results.append({
                             "종목명": name,
-                            "최근 1달 고점": f"{high_price:,}원", # 🔥 글자도 롤백 완료!
+                            "최근 1달 고점": f"{high_price:,}원",
                             "현재가": f"{curr_price:,}원",
                             "고점 대비 하락률": drop_rate,
                             "포메뽀꼬 시그널": signal
@@ -628,7 +652,8 @@ else:
     col_chat1, col_chat2 = st.columns([3, 1])
     msg_to_send = None
     
-    if col_chat1.button("🌍 AI 멘토에게 '오늘 글로벌 시장 흐름 종합 브리핑' 받기", use_container_width=True):
+    # 🔥 [업그레이드] 브리핑 버튼 강조!
+    if col_chat1.button("🌍 AI 멘토에게 '오늘 글로벌 시장 흐름 종합 브리핑' 받기", type="primary", use_container_width=True):
         msg_to_send = "최근의 미국 기준금리 변동 예상(FedWatch), 시장의 공포/탐욕 지수 상태, S&P 500 전반적인 흐름, 주요 경제 뉴스를 기반으로 현재 거시 경제 시황을 분석하고, 포메뽀꼬의 장기 투자 관점에서 내가 가져야 할 멘탈을 3줄로 요약해줘."
 
     if col_chat2.button("🔄 대화 내용 지우기", use_container_width=True):
