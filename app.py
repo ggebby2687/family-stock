@@ -7,19 +7,12 @@ import plotly.graph_objects as go
 import google.generativeai as genai
 from datetime import datetime, timedelta
 
-# 페이지 기본 설정 (가장 위에 있어야 함)
 st.set_page_config(page_title="가족 자산 대시보드", page_icon="💰", layout="wide")
 
-# ==============================================================================
-# 🎨 [디자인 업그레이드] 전체 폰트 및 여백 깔끔하게 다듬기 (CSS)
-# ==============================================================================
 st.markdown("""
 <style>
-    /* 상단 여백을 살짝 줄여서 화면을 넓게 씁니다 */
     .block-container { padding-top: 2rem; padding-bottom: 2rem; }
-    /* 소제목 텍스트에 색상 포인트를 주어 눈에 띄게 합니다 */
     h2, h3 { color: #1E88E5; font-family: 'Noto Sans KR', sans-serif; }
-    /* 구분선을 조금 더 연하게 */
     hr { margin-top: 1rem; margin-bottom: 1rem; border-color: #e0e0e0; }
 </style>
 """, unsafe_allow_html=True)
@@ -50,24 +43,53 @@ st.sidebar.markdown("---")
 st.sidebar.header("🤖 AI 멘토 상태")
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
-    st.sidebar.success("✅ AI 멘토 연결 완벽!")
+    st.sidebar.success("✅ AI 멘토 시스템 연결 완벽!")
+    st.sidebar.caption("비밀 금고에서 인증키를 자동으로 불러왔습니다.")
 except:
     api_key = ""
     st.sidebar.error("⚠️ 비밀 금고에 키가 없습니다.")
     api_key = st.sidebar.text_input("Gemini API Key (로컬용)", type="password")
 
+
+# ==============================================================================
+# 🌟 [버그 수정 완료] 거래소 서버 다운 방어 및 비상용 사전 탑재
+# ==============================================================================
 @st.cache_data
 def load_stock_dict():
-    krx = fdr.StockListing('KRX')
-    krx_code_col = 'Code' if 'Code' in krx.columns else 'Symbol'
-    dict_krx = dict(zip(krx[krx_code_col], krx['Name']))
+    dict_krx = {}
+    
+    # 1. 한국 주식(KRX) 목록 가져오기 시도
+    try:
+        krx = fdr.StockListing('KRX')
+        krx_code_col = 'Code' if 'Code' in krx.columns else 'Symbol'
+        dict_krx.update(dict(zip(krx[krx_code_col], krx['Name'])))
+    except:
+        pass # 에러가 나면 멈추지 않고 조용히 넘어갑니다 (안전장치 1)
+
+    # 2. 한국 ETF 목록 가져오기 시도
     try:
         etf = fdr.StockListing('ETF/KR')
         etf_code_col = 'Code' if 'Code' in etf.columns else 'Symbol'
-        dict_etf = dict(zip(etf[etf_code_col], etf['Name']))
-        dict_krx.update(dict_etf)
+        dict_krx.update(dict(zip(etf[etf_code_col], etf['Name'])))
     except:
-        pass
+        pass # 에러가 나면 조용히 넘어갑니다 (안전장치 2)
+
+    # 3. 거래소 서버가 완전히 죽었을 때를 대비한 '비상용 필수 ETF 사전'
+    emergency_dict = {
+        "367380": "KODEX 미국나스닥100TR",
+        "133690": "TIGER 미국나스닥100",
+        "360200": "TIGER 미국S&P500",
+        "379800": "KODEX 미국S&P500TR",
+        "460330": "TIGER 미국배당+7%프리미엄다우존스",
+        "461020": "TIGER 미국배당다우존스",
+        "005930": "삼성전자"
+    }
+    
+    # 비상용 사전에 있는 코드가 현재 사전에 없으면 억지로 끼워 넣습니다.
+    for code, name in emergency_dict.items():
+        if code not in dict_krx:
+            dict_krx[code] = name
+
     return dict_krx
 
 stock_dict = load_stock_dict()
@@ -98,7 +120,6 @@ else:
 
 if not df_dep.empty:
     df_dep = df_dep.sort_values(by="입금일자", ascending=False, na_position='last').reset_index(drop=True)
-
 
 st.subheader("📝 1. 나의 자산 데이터 입력")
 tab1, tab2, tab3 = st.tabs(["🛒 수동 매매 일지", "🏦 계좌 입금 내역", "⏳ 적립식 봇 설정 (자동)"])
@@ -146,8 +167,7 @@ with tab1:
         new_qty = c7.number_input("📦 수량 (주)", min_value=0.0, step=1.0, key="new_qty")
         new_memo = c8.text_input("📝 메모 (선택)", key="new_memo")
 
-        st.write("") # 버튼 위 여백
-        # 🔥 [업그레이드] type="primary" 를 추가하여 붉은색 테마 버튼으로 강력하게 강조!
+        st.write("") 
         if st.button("💾 이 매매 기록 확실히 추가하기", type="primary", use_container_width=True, key="btn_save_stock"):
             if final_owner and final_acc and final_code and new_qty > 0:
                 new_row = pd.DataFrame([{"소유자": final_owner, "계좌명": final_acc, "거래종류": new_type, "종목코드(6자리)": final_code, "거래일자": new_date.strftime("%Y-%m-%d"), "거래단가": new_price, "수량": new_qty, "메모": new_memo}])
@@ -195,7 +215,6 @@ with tab2:
         new_dep_memo = c5.text_input("📝 메모 (선택)", key="new_dep_memo")
 
         st.write("")
-        # 🔥 [업그레이드] type="primary"
         if st.button("💾 이 입금 기록 확실히 추가하기", type="primary", use_container_width=True, key="btn_save_dep"):
             if final_dep_owner and final_dep_acc and new_dep_amt > 0:
                 new_row_dep = pd.DataFrame([{"소유자": final_dep_owner, "계좌명": final_dep_acc, "입금일자": new_dep_date.strftime("%Y-%m-%d"), "입금액": new_dep_amt, "메모": new_dep_memo}])
@@ -219,7 +238,6 @@ with tab3:
     edited_rec = st.data_editor(df_rec, num_rows="dynamic", use_container_width=True, height=150, key="recurring", column_config={"매수주기": st.column_config.SelectboxColumn("매수주기", options=["매일(영업일)"], required=True)})
     
     st.write("")
-    # 🔥 [업그레이드] 봇 실행 버튼도 눈에 띄게!
     if st.button("🚀 적립식 자동 매수 실행! (빈 날짜 영수증 싹 채우기)", type="primary", use_container_width=True):
         edited_rec.to_csv(RECURRING_FILE, index=False, encoding='utf-8-sig')
         new_orders = []
@@ -250,9 +268,6 @@ with tab3:
         else:
             st.info("✅ 이미 오늘까지의 적립식 매수가 모두 완료되어 최신 상태입니다.")
 
-# ==============================================================================
-# 🚨 가장 중요한 마스터 저장 버튼 - 절대 잊지 않게!
-# ==============================================================================
 st.write("")
 if st.button("💾 ☝️ 표 안에서 직접 수정한 내용들 [최종 저장] 하기", type="primary", use_container_width=True):
     edited_stock.drop(columns=['종목명'], errors='ignore').to_csv(PORTFOLIO_FILE, index=False, encoding='utf-8-sig')
@@ -273,7 +288,6 @@ with st.form("summary_form"):
     selected_accs = col_top2.multiselect("🏦 계좌 선택", all_accs, default=[])
     
     st.write("")
-    # 🔥 [업그레이드] type="primary"
     summary_submit = st.form_submit_button("📊 자산 요약 조회하기", type="primary", use_container_width=True)
 
 if summary_submit:
@@ -572,7 +586,7 @@ if st.session_state.get("show_detail"):
 
 st.write("---")
 st.subheader("🎯 4. 관심 종목 바겐세일(낙폭) 스캐너")
-st.info("💡 종목을 고르고 **[🎯 스캔 시작]**을 눌러야만 최근 '1개월(30일) 고점' 대비 하락률을 계산합니다.")
+st.info("💡 종목을 고르고 **[🎯 스캔 시작]**을 눌러야만 최근 '1개월(30일) 단기 고점' 대비 하락률을 계산합니다.")
 
 default_target_codes = ["367380", "360200", "460330"]
 all_krx_names = list(stock_dict.values())
@@ -652,7 +666,6 @@ else:
     col_chat1, col_chat2 = st.columns([3, 1])
     msg_to_send = None
     
-    # 🔥 [업그레이드] 브리핑 버튼 강조!
     if col_chat1.button("🌍 AI 멘토에게 '오늘 글로벌 시장 흐름 종합 브리핑' 받기", type="primary", use_container_width=True):
         msg_to_send = "최근의 미국 기준금리 변동 예상(FedWatch), 시장의 공포/탐욕 지수 상태, S&P 500 전반적인 흐름, 주요 경제 뉴스를 기반으로 현재 거시 경제 시황을 분석하고, 포메뽀꼬의 장기 투자 관점에서 내가 가져야 할 멘탈을 3줄로 요약해줘."
 
